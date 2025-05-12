@@ -9,7 +9,7 @@ you need a sfml libriary --verison 2.6.2
                 "C:\\c++libraries\\SFML-2.6.2\\include" <-- here
             ],
 
-1.2)Add/or chnage th ocmpiler path
+1.2)Add/or chnage th compiler path
 
 2) Compile the programm
 
