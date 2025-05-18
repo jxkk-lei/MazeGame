@@ -13,10 +13,10 @@ you need a sfml libriary --verison 2.6.2
 
 2) Compile the programm
 
-2.1)g++ -c main.cpp -l"path to include folder(sfml)"
+2.1)g++ -c main.cpp -I"path to include folder(sfml)"
 
 3)build .exe file
 
-3.1) g++ sfml_test.o -0 main -L"path to lib folder(sfml)" -lsfml-graphics -lsfml-window -lsfml-system
+3.1) g++ main.o -o main -L"path to lib folder(sfml)" -lsfml-graphics -lsfml-window -lsfml-system
 
 4)Run game.
