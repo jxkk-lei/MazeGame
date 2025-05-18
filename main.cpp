@@ -1,4 +1,3 @@
-
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <cstdlib>
@@ -148,19 +147,49 @@ public:
     }
 };
 
-class Player {
-public:
+class Unit {
+protected:
     int x, y;
+    bool isMoving;
+
+public:
+    int getX() const { return x; }
+    int getY() const { return y; }
+    void setX(int val) { x = val; }
+    void setY(int val) { y = val; }
+    Unit(int startX = 0, int startY = 0) : x(startX), y(startY), isMoving(false) {}
+
+    virtual void move(int dx, int dy, const Maze& maze) {
+        int newX = x + dx;
+        int newY = y + dy;
+        if (!maze.isWall(newX, newY)) {
+            x = newX;
+            y = newY;
+            isMoving = true;
+        } else {
+            isMoving = false;
+        }
+    }
+
+    virtual void update() = 0;
+    virtual void draw(sf::RenderWindow& window) = 0;
+};
+
+
+class Player : public Unit {
+private:
     vector<sf::Texture> animationFrames;
     sf::Sprite sprite;
     int currentFrame;
     sf::Clock animationClock;
     float frameTime;
-    bool isMoving;
-    bool movementKeyPressed = false;
+
+public:
+    bool movementKeyPressed;
 
     Player(int startX = 1, int startY = 1)
-        : x(startX), y(startY), currentFrame(0), frameTime(0.45f), isMoving(false) {
+        : Unit(startX, startY), currentFrame(0), frameTime(0.45f),
+          movementKeyPressed(false) {
         loadAnimationFrames({
             "Tiles/slime1.png",
             "Tiles/slime2.png",
@@ -189,7 +218,7 @@ public:
         }
     }
 
-    void update() {
+    void update() override {
         if (isMoving && animationClock.getElapsedTime().asSeconds() >= frameTime) {
             currentFrame = (currentFrame + 1) % animationFrames.size();
             sprite.setTexture(animationFrames[currentFrame]);
@@ -202,83 +231,24 @@ public:
         isMoving = false;
     }
 
-    void move(int dx, int dy, const Maze& maze) {
-        int newX = x + dx;
-        int newY = y + dy;
-        if (!maze.isWall(newX, newY)) {
-            x = newX;
-            y = newY;
-            isMoving = true;
-        } else {
-            isMoving = false;
-        }
-    }
-
-    void draw(sf::RenderWindow& window) {
+    void draw(sf::RenderWindow& window) override {
         sprite.setPosition(x * TILE_SIZE, y * TILE_SIZE);
         window.draw(sprite);
     }
 };
-
-int clamp(int val, int minVal, int maxVal) {
-    return max(minVal, min(val, maxVal));
-}
-
-class Game {
+class GameUI {
 private:
-    const int width = 61, height = 61;
-    GameState currentState = MAIN_MENU;
-    sf::RenderWindow window;
     sf::Font font;
-
-    Maze maze;
-    Player player;
-    vector<pair<int, int>> currentPath;
-
-    sf::RectangleShape passRect, playerRect, exitRect;
     sf::RectangleShape playButton, exitButton;
     sf::Text playText, exitText;
-
-    sf::Texture wallTextures[4];
-    sf::Sprite wallSprites[4];
-
-    sf::Clock gameClock, finishClock;
-    sf::Time finishTime;
-    bool tHeld = false;
-    bool fullView = false;
+    sf::Text timeText, resultText;
 
 public:
-    Game() : window(sf::VideoMode(1920, 1080), "Maze"), maze(width, height) {
-        window.setFramerateLimit(60);
-        srand(static_cast<unsigned>(time(NULL)));
-
+    GameUI() {
         if (!font.loadFromFile("Fonts/PixelOperator8.ttf")) {
             cerr << "Error loading font\n";
             exit(1);
         }
-
-        if (!wallTextures[0].loadFromFile("Tiles/FieldsTile_01.png") ||
-            !wallTextures[1].loadFromFile("Tiles/FieldsTile_02.png") ||
-            !wallTextures[2].loadFromFile("Tiles/FieldsTile_03.png") ||
-            !wallTextures[3].loadFromFile("Tiles/FieldsTile_04.png")) {
-            cerr << "Error loading wall textures\n";
-            exit(1);
-        }
-
-        for (int i = 0; i < 4; ++i) {
-            wallSprites[i].setTexture(wallTextures[i]);
-            wallSprites[i].setScale(
-                TILE_SIZE / wallTextures[i].getSize().x,
-                TILE_SIZE / wallTextures[i].getSize().y
-            );
-        }
-
-        passRect.setSize({TILE_SIZE, TILE_SIZE});
-        playerRect.setSize({TILE_SIZE, TILE_SIZE});
-        exitRect.setSize({TILE_SIZE, TILE_SIZE});
-        passRect.setFillColor(sf::Color::White);
-        playerRect.setFillColor(sf::Color::Red);
-        exitRect.setFillColor(sf::Color::Green);
 
         playButton.setSize({300, 80});
         exitButton.setSize({300, 80});
@@ -293,6 +263,107 @@ public:
         exitText.setCharacterSize(50);
         playText.setFillColor(sf::Color::White);
         exitText.setFillColor(sf::Color::White);
+
+        timeText.setFont(font);
+        timeText.setCharacterSize(30);
+        timeText.setFillColor(sf::Color::White);
+
+        resultText.setFont(font);
+        resultText.setCharacterSize(60);
+        resultText.setFillColor(sf::Color::White);
+    }
+
+    void updateTimeText(float seconds) {
+        timeText.setString("Time: " + to_string((int)seconds));
+    }
+
+    void updateResultText(float seconds) {
+        stringstream ss;
+        ss << "Finished in " << seconds << " seconds!";
+        resultText.setString(ss.str());
+        resultText.setPosition(1920 / 2 - resultText.getLocalBounds().width / 2, 1080 / 2 - 50);
+    }
+
+    void drawMainMenu(sf::RenderWindow& window) {
+        playButton.setPosition(window.getSize().x / 2 - 150, 400);
+        playText.setPosition(playButton.getPosition().x + 100, playButton.getPosition().y + 15);
+        exitButton.setPosition(window.getSize().x / 2 - 150, 500);
+        exitText.setPosition(exitButton.getPosition().x + 100, exitButton.getPosition().y + 15);
+
+        window.draw(playButton);
+        window.draw(playText);
+        window.draw(exitButton);
+        window.draw(exitText);
+    }
+
+    void drawGameUI(sf::RenderWindow& window) {
+        timeText.setPosition(1600, 20);
+        window.draw(timeText);
+    }
+
+    void drawResult(sf::RenderWindow& window) {
+        window.draw(resultText);
+    }
+
+    bool isPlayButtonClicked(sf::RenderWindow& window, sf::Event& event) {
+        sf::Vector2f mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window));
+        playButton.setPosition(window.getSize().x / 2 - 150, 400);
+        return playButton.getGlobalBounds().contains(mousePos);
+    }
+
+    bool isExitButtonClicked(sf::RenderWindow& window, sf::Event& event) {
+        sf::Vector2f mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window));
+        exitButton.setPosition(window.getSize().x / 2 - 150, 500);
+        return exitButton.getGlobalBounds().contains(mousePos);
+    }
+};
+
+class Game {
+private:
+    const int width = 61, height = 61;
+    GameState currentState = MAIN_MENU;
+    sf::RenderWindow window;
+
+    Maze maze;
+    Player player;
+    std::vector<std::pair<int, int>> currentPath;
+
+    sf::RectangleShape passRect, exitRect;
+    sf::Texture wallTextures[4];
+    sf::Sprite wallSprites[4];
+
+    sf::Clock gameClock, finishClock;
+    sf::Time finishTime;
+    bool tHeld = false;
+    bool fullView = false;
+
+    GameUI ui;
+
+public:
+    Game() : window(sf::VideoMode(1920, 1080), "Maze"), maze(width, height) {
+        window.setFramerateLimit(60);
+        srand(static_cast<unsigned>(time(NULL)));
+
+        if (!wallTextures[0].loadFromFile("Tiles/FieldsTile_01.png") ||
+            !wallTextures[1].loadFromFile("Tiles/FieldsTile_02.png") ||
+            !wallTextures[2].loadFromFile("Tiles/FieldsTile_03.png") ||
+            !wallTextures[3].loadFromFile("Tiles/FieldsTile_04.png")) {
+            std::cerr << "Error loading wall textures\n";
+            exit(1);
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            wallSprites[i].setTexture(wallTextures[i]);
+            wallSprites[i].setScale(
+                TILE_SIZE / static_cast<float>(wallTextures[i].getSize().x),
+                TILE_SIZE / static_cast<float>(wallTextures[i].getSize().y)
+            );
+        }
+
+        passRect.setSize({TILE_SIZE, TILE_SIZE});
+        exitRect.setSize({TILE_SIZE, TILE_SIZE});
+        passRect.setFillColor(sf::Color::White);
+        exitRect.setFillColor(sf::Color::Green);
     }
 
     void run() {
@@ -305,11 +376,11 @@ public:
 
 private:
     void processEvents() {
-        bool movementKeyPressed = false;
         sf::Event event;
         while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
+            if (event.type == sf::Event::Closed) {
                 window.close();
+            }
 
             if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
                 if (currentState == PLAYING)
@@ -317,75 +388,85 @@ private:
             }
 
             if (currentState == MAIN_MENU && event.type == sf::Event::MouseButtonPressed) {
-                sf::Vector2f mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window));
-                playButton.setPosition(window.getSize().x / 2 - 150, 400);
-                exitButton.setPosition(window.getSize().x / 2 - 150, 500);
-
-                if (playButton.getGlobalBounds().contains(mousePos)) {
-                    maze.generate();
-                    player = Player(1, 1);
-                    while (maze.get(player.x, player.y) != PASS) {
-                        player.x++;
-                        if (player.x >= maze.getWidth()) {
-                            player.x = 1;
-                            player.y++;
-                        }
-                        if (player.y >= maze.getHeight()) {
-                            cerr << "Error: No valid starting position found!" << endl;
-                            exit(1);
-                        }
-                    }
-                    gameClock.restart();
-                    currentPath.clear();
-                    currentState = PLAYING;
-                } else if (exitButton.getGlobalBounds().contains(mousePos)) {
+                if (ui.isPlayButtonClicked(window, event)) {
+                    startNewGame();
+                } else if (ui.isExitButtonClicked(window, event)) {
                     window.close();
                 }
             } else if (currentState == PLAYING) {
-                static sf::Clock moveClock;
-                float moveDelay = 0.15f;
-
-                if (event.type == sf::Event::KeyPressed) {
-                    if (event.key.code == sf::Keyboard::Tab) fullView = !fullView;
-                    if (event.key.code == sf::Keyboard::T) {
-                        tHeld = true;
-                        currentPath = maze.findShortestPath(player.x, player.y, width - 2, height - 2);
-                    }
-                    if (event.key.code == sf::Keyboard::R) currentPath.clear();
-                }
-                if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::T) tHeld = false;
-
-if (moveClock.getElapsedTime().asSeconds() > moveDelay) {
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
-        player.move(0, -1, maze);
-        movementKeyPressed = true;
-    }
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
-        player.move(0, 1, maze);
-        movementKeyPressed = true;
-    }
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
-        player.move(-1, 0, maze);
-        movementKeyPressed = true;
-    }
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
-        player.move(1, 0, maze);
-        movementKeyPressed = true;
-    }
-    moveClock.restart();
-}
+                handleGameInput(event);
             }
+        }
+    }
+
+    void startNewGame() {
+        maze.generate();
+        player = Player(1, 1);
+
+        while (maze.get(player.getX(), player.getY()) != PASS) {
+            player.setX(player.getX() + 1);
+            if (player.getX() >= maze.getWidth()) {
+                player.setX(1);
+                player.setY(player.getY() + 1);
+                if (player.getY() >= maze.getHeight()) {
+                    break;
+                }
+            }
+        }
+
+        gameClock.restart();
+        currentPath.clear();
+        currentState = PLAYING;
+    }
+
+    void handleGameInput(sf::Event& event) {
+        static sf::Clock moveClock;
+        const float moveDelay = 0.15f;
+
+        if (event.type == sf::Event::KeyPressed) {
+            if (event.key.code == sf::Keyboard::Tab) {
+                fullView = !fullView;
+            }
+            if (event.key.code == sf::Keyboard::T) {
+                tHeld = true;
+                currentPath = maze.findShortestPath(player.getX(), player.getY(), width - 2, height - 2);
+            }
+            if (event.key.code == sf::Keyboard::R) {
+                currentPath.clear();
+            }
+        }
+
+        if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::T) {
+            tHeld = false;
+        }
+
+        if (moveClock.getElapsedTime().asSeconds() > moveDelay) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
+                player.move(0, -1, maze);
+            }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
+                player.move(0, 1, maze);
+            }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
+                player.move(-1, 0, maze);
+            }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
+                player.move(1, 0, maze);
+            }
+            moveClock.restart();
         }
     }
 
     void update() {
         if (currentState == PLAYING) {
-            if (player.x == width - 2 && player.y == height - 2) {
+            if (player.getX() == width - 2 && player.getY() == height - 2) {
                 finishTime = gameClock.getElapsedTime();
                 finishClock.restart();
                 currentState = FINISHED;
+                ui.updateResultText(finishTime.asSeconds());
             }
             player.update();
+            ui.updateTimeText(gameClock.getElapsedTime().asSeconds());
         } else if (currentState == FINISHED && finishClock.getElapsedTime().asSeconds() >= 5) {
             currentState = MAIN_MENU;
         }
@@ -396,67 +477,55 @@ if (moveClock.getElapsedTime().asSeconds() > moveDelay) {
 
         if (currentState == MAIN_MENU) {
             window.setView(window.getDefaultView());
-            playButton.setPosition(window.getSize().x / 2 - 150, 400);
-            playText.setPosition(playButton.getPosition().x + 100, playButton.getPosition().y + 15);
-            exitButton.setPosition(window.getSize().x / 2 - 150, 500);
-            exitText.setPosition(exitButton.getPosition().x + 100, exitButton.getPosition().y + 15);
-
-            window.draw(playButton);
-            window.draw(playText);
-            window.draw(exitButton);
-            window.draw(exitText);
+            ui.drawMainMenu(window);
         } else if (currentState == PLAYING) {
-            sf::View view;
-            if (fullView) {
-                view.setSize(width * TILE_SIZE, height * TILE_SIZE);
-                view.setCenter(width * TILE_SIZE / 2, height * TILE_SIZE / 2);
-            } else {
-                view.setSize(1920, 1080);
-                view.setCenter(
-                    clamp(player.x * TILE_SIZE, 1920 / 2, width * TILE_SIZE - 1920 / 2),
-                    clamp(player.y * TILE_SIZE, 1080 / 2, height * TILE_SIZE - 1080 / 2)
-                );
-            }
-            window.setView(view);
-
-            maze.draw(window, wallSprites, passRect, player.x, player.y, fullView);
-
-            sf::RectangleShape pathRect(sf::Vector2f(TILE_SIZE, TILE_SIZE));
-            pathRect.setFillColor(sf::Color(255, 255, 128));
-            for (auto& p : currentPath) {
-                if (fullView || (abs(p.first - player.y) <= VIEW_RADIUS && abs(p.second - player.x) <= VIEW_RADIUS)) {
-                    pathRect.setPosition(p.second * TILE_SIZE, p.first * TILE_SIZE);
-                    window.draw(pathRect);
-                }
-            }
-
-            exitRect.setPosition((width - 2) * TILE_SIZE, (height - 2) * TILE_SIZE);
-            window.draw(exitRect);
-
-            player.draw(window);
-
-            sf::Text timeText;
-            timeText.setFont(font);
-            timeText.setString("Time: " + to_string((int)gameClock.getElapsedTime().asSeconds()));
-            timeText.setCharacterSize(30);
-            timeText.setFillColor(sf::Color::White);
+            setGameView();
+            drawGameWorld();
             window.setView(window.getDefaultView());
-            timeText.setPosition(1600, 20);
-            window.draw(timeText);
+            ui.drawGameUI(window);
         } else if (currentState == FINISHED) {
             window.setView(window.getDefaultView());
-            sf::Text resultText;
-            resultText.setFont(font);
-            stringstream ss;
-            ss << "Finished in " << finishTime.asSeconds() << " seconds!";
-            resultText.setString(ss.str());
-            resultText.setCharacterSize(60);
-            resultText.setFillColor(sf::Color::White);
-            resultText.setPosition(1920 / 2 - resultText.getLocalBounds().width / 2, 1080 / 2 - 50);
-            window.draw(resultText);
+            ui.drawResult(window);
         }
 
         window.display();
+    }
+
+    void setGameView() {
+        sf::View view;
+        if (fullView) {
+            view.setSize(width * TILE_SIZE, height * TILE_SIZE);
+            view.setCenter(width * TILE_SIZE / 2.f, height * TILE_SIZE / 2.f);
+        } else {
+            view.setSize(1920.f, 1080.f);
+            view.setCenter(
+                clamp(player.getX() * TILE_SIZE, 1920 / 2, width * TILE_SIZE - 1920 / 2),
+                clamp(player.getY() * TILE_SIZE, 1080 / 2, height * TILE_SIZE - 1080 / 2)
+            );
+        }
+        window.setView(view);
+    }
+
+    void drawGameWorld() {
+        maze.draw(window, wallSprites, passRect, player.getX(), player.getY(), fullView);
+
+        sf::RectangleShape pathRect(sf::Vector2f(TILE_SIZE, TILE_SIZE));
+        pathRect.setFillColor(sf::Color(255, 255, 128));
+        for (const auto& p : currentPath) {
+            if (fullView || (abs(p.first - player.getY()) <= VIEW_RADIUS && abs(p.second - player.getX()) <= VIEW_RADIUS)) {
+                pathRect.setPosition(p.second * TILE_SIZE, p.first * TILE_SIZE);
+                window.draw(pathRect);
+            }
+        }
+
+        exitRect.setPosition((width - 2) * TILE_SIZE, (height - 2) * TILE_SIZE);
+        window.draw(exitRect);
+
+        player.draw(window);
+    }
+
+    int clamp(int val, int minVal, int maxVal) {
+        return std::max(minVal, std::min(val, maxVal));
     }
 };
 
